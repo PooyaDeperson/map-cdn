@@ -1,12 +1,16 @@
-```html
+
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>map DNS</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>map CDN - Assets</title>
+
     <style>
         body {
             font-family: Arial, sans-serif;
             margin: 30px;
+            line-height: 1.5;
         }
 
         h1 {
@@ -14,12 +18,12 @@
         }
 
         ul {
-            list-style-type: none;
-            padding-left: 20px;
+            list-style: none;
+            padding-left: 22px;
         }
 
         li {
-            margin: 5px 0;
+            margin: 6px 0;
         }
 
         a {
@@ -33,86 +37,200 @@
 
         .folder {
             font-weight: bold;
+            color: #333;
         }
 
         #status {
             color: gray;
+            margin: 12px 0;
+        }
+
+        .error {
+            color: #c62828 !important;
+            white-space: pre-wrap;
+        }
+
+        details > summary {
+            cursor: pointer;
+            margin: 5px 0;
+        }
+
+        details > summary:hover {
+            color: #0066cc;
+        }
+
+        .empty {
+            color: gray;
+            font-style: italic;
         }
     </style>
 </head>
 
 <body>
 
-<h1>📁 Assets</h1>
+    <h1>📁 Assets</h1>
 
-<div id="status">Loading files...</div>
+    <div id="status">Loading folders and files...</div>
 
-<ul id="fileTree"></ul>
+    <ul id="fileTree"></ul>
 
-<script>
-const username = "PooyaDeperson";
-const repository = "map-dns";
-const folder = "assets";
+    <script>
+        const username = "PooyaDeperson";
+        const repository = "map-cdn";
+        const folder = "assets";
 
-const apiURL = `https://api.github.com/repos/${username}/${repository}/contents/${folder}`;
+        // GitHub API
+        const apiURL =
+            `https://api.github.com/repos/${username}/${repository}/contents`;
 
-const baseURL = `https://${username}.github.io/${repository}/${folder}`;
+        // GitHub Pages file URL
+        const baseURL =
+            `https://${username}.github.io/${repository}/${folder}`;
 
-async function loadFiles(path = "", parentElement = document.getElementById("fileTree")) {
+        const status = document.getElementById("status");
+        const fileTree = document.getElementById("fileTree");
 
-    const url = path
-        ? `${apiURL}/${path}`
-        : apiURL;
-
-    const response = await fetch(url);
-    const files = await response.json();
-
-    files.forEach(file => {
-
-        const li = document.createElement("li");
-
-        if (file.type === "dir") {
-
-            li.innerHTML = `📁 <span class="folder">${file.name}</span>`;
-
-            const subList = document.createElement("ul");
-            li.appendChild(subList);
-
-            loadFiles(
-                path ? `${path}/${file.name}` : file.name,
-                subList
-            );
-
-        } else {
-
-            const link = document.createElement("a");
-
-            const filePath = path
-                ? `${path}/${file.name}`
-                : file.name;
-
-            link.href = `${baseURL}/${filePath}`;
-            link.target = "_blank";
-            link.textContent = `📄 ${file.name}`;
-
-            li.appendChild(link);
+        function encodePath(path) {
+            return path
+                .split("/")
+                .map(part => encodeURIComponent(part))
+                .join("/");
         }
 
-        parentElement.appendChild(li);
-    });
-}
+        async function getFiles(path) {
+            const url = `${apiURL}/${encodePath(path)}`;
 
+            const response = await fetch(url, {
+                headers: {
+                    Accept: "application/vnd.github+json"
+                }
+            });
 
-loadFiles()
-.then(() => {
-    document.getElementById("status").remove();
-})
-.catch(error => {
-    document.getElementById("status").innerHTML =
-        "Error loading files: " + error;
-});
-</script>
+            let data;
+
+            try {
+                data = await response.json();
+            } catch {
+                throw new Error(
+                    `Invalid response from GitHub (HTTP ${response.status}).`
+                );
+            }
+
+            if (!response.ok) {
+                throw new Error(
+                    `GitHub API error ${response.status}: ` +
+                    (data.message || response.statusText)
+                );
+            }
+
+            if (!Array.isArray(data)) {
+                throw new Error(
+                    "GitHub returned unexpected data instead of a folder listing."
+                );
+            }
+
+            return data;
+        }
+
+        async function loadFiles(path, parentElement) {
+            const files = await getFiles(path);
+
+            // Sort folders before files
+            files.sort((a, b) => {
+                if (a.type === "dir" && b.type !== "dir") return -1;
+                if (a.type !== "dir" && b.type === "dir") return 1;
+                return a.name.localeCompare(b.name);
+            });
+
+            for (const file of files) {
+                const li = document.createElement("li");
+
+                if (file.type === "dir") {
+                    const details = document.createElement("details");
+                    const summary = document.createElement("summary");
+                    const label = document.createElement("span");
+                    const subList = document.createElement("ul");
+
+                    label.className = "folder";
+                    label.textContent = `📁 ${file.name}`;
+
+                    summary.appendChild(label);
+                    details.appendChild(summary);
+                    details.appendChild(subList);
+
+                    li.appendChild(details);
+                    parentElement.appendChild(li);
+
+                    // Fetch subfolder contents when expanded
+                    details.addEventListener("toggle", async () => {
+                        if (!details.open || details.dataset.loaded) {
+                            return;
+                        }
+
+                        details.dataset.loaded = "loading";
+
+                        try {
+                            await loadFiles(file.path, subList);
+                            details.dataset.loaded = "true";
+
+                            if (subList.children.length === 0) {
+                                const empty = document.createElement("li");
+                                empty.className = "empty";
+                                empty.textContent = "(Empty folder)";
+                                subList.appendChild(empty);
+                            }
+                        } catch (error) {
+                            details.dataset.loaded = "";
+
+                            const errorItem = document.createElement("li");
+                            errorItem.className = "error";
+                            errorItem.textContent = error.message;
+
+                            subList.appendChild(errorItem);
+
+                            console.error(
+                                "Failed to load folder:",
+                                file.path,
+                                error
+                            );
+                        }
+                    });
+
+                } else if (file.type === "file") {
+                    const link = document.createElement("a");
+
+                    const relativePath = file.path
+                        .split("/")
+                        .slice(folder.split("/").length)
+                        .map(part => encodeURIComponent(part))
+                        .join("/");
+
+                    link.href = `${baseURL}/${relativePath}`;
+                    link.target = "_blank";
+                    link.rel = "noopener noreferrer";
+                    link.textContent = `📄 ${file.name}`;
+
+                    li.appendChild(link);
+                    parentElement.appendChild(li);
+                }
+            }
+        }
+
+        async function init() {
+            try {
+                await loadFiles(folder, fileTree);
+                status.textContent = "Folders and files loaded.";
+            } catch (error) {
+                status.className = "error";
+                status.textContent =
+                    `Error loading files: ${error.message}`;
+
+                console.error("Asset loading failed:", error);
+            }
+        }
+
+        init();
+    </script>
 
 </body>
 </html>
-```
