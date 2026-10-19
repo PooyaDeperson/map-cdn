@@ -1,0 +1,118 @@
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>map DNS</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 30px;
+        }
+
+        h1 {
+            font-size: 24px;
+        }
+
+        ul {
+            list-style-type: none;
+            padding-left: 20px;
+        }
+
+        li {
+            margin: 5px 0;
+        }
+
+        a {
+            text-decoration: none;
+            color: #0066cc;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        .folder {
+            font-weight: bold;
+        }
+
+        #status {
+            color: gray;
+        }
+    </style>
+</head>
+
+<body>
+
+<h1>📁 Assets</h1>
+
+<div id="status">Loading files...</div>
+
+<ul id="fileTree"></ul>
+
+<script>
+const username = "PooyaDeperson";
+const repository = "map-dns";
+const folder = "assets";
+
+const apiURL = `https://api.github.com/repos/${username}/${repository}/contents/${folder}`;
+
+const baseURL = `https://${username}.github.io/${repository}/${folder}`;
+
+async function loadFiles(path = "", parentElement = document.getElementById("fileTree")) {
+
+    const url = path
+        ? `${apiURL}/${path}`
+        : apiURL;
+
+    const response = await fetch(url);
+    const files = await response.json();
+
+    files.forEach(file => {
+
+        const li = document.createElement("li");
+
+        if (file.type === "dir") {
+
+            li.innerHTML = `📁 <span class="folder">${file.name}</span>`;
+
+            const subList = document.createElement("ul");
+            li.appendChild(subList);
+
+            loadFiles(
+                path ? `${path}/${file.name}` : file.name,
+                subList
+            );
+
+        } else {
+
+            const link = document.createElement("a");
+
+            const filePath = path
+                ? `${path}/${file.name}`
+                : file.name;
+
+            link.href = `${baseURL}/${filePath}`;
+            link.target = "_blank";
+            link.textContent = `📄 ${file.name}`;
+
+            li.appendChild(link);
+        }
+
+        parentElement.appendChild(li);
+    });
+}
+
+
+loadFiles()
+.then(() => {
+    document.getElementById("status").remove();
+})
+.catch(error => {
+    document.getElementById("status").innerHTML =
+        "Error loading files: " + error;
+});
+</script>
+
+</body>
+</html>
+```
